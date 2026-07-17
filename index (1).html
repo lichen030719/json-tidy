@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>報單資料整理台 · OCR JSON Cleaner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;800;900&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg:#DCE0DC;
+    --panel:#FBFAF6;
+    --ink:#18231E;
+    --ink-soft:#5A645E;
+    --ink-faint:#8A928B;
+    --rule:#C6CAC2;
+    --rule-strong:#A9AEA5;
+    --stamp:#B4331F;
+    --stamp-soft:#efd9d3;
+    --field:#F4F3EC;
+    --ok:#0C6B4E;
+    --focus:#18231E;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:"Inter",system-ui,-apple-system,"Noto Sans TC",sans-serif;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    background-image:radial-gradient(var(--rule) 0.6px, transparent 0.6px);
+    background-size:22px 22px;
+  }
+  .wrap{max-width:1120px;margin:0 auto;padding:28px 20px 96px;}
+
+  /* ---- masthead ---- */
+  .masthead{
+    border:1.5px solid var(--ink);
+    background:var(--panel);
+    position:relative;
+  }
+  .masthead .perf{
+    height:0;border-top:2px dashed var(--rule-strong);
+    margin:0;
+  }
+  .mast-body{padding:22px 26px 20px;display:flex;flex-wrap:wrap;gap:18px 28px;align-items:flex-end;justify-content:space-between;}
+  .eyebrow{
+    font-family:"IBM Plex Mono",monospace;
+    font-size:11px;letter-spacing:.22em;text-transform:uppercase;
+    color:var(--stamp);font-weight:600;margin:0 0 8px;
+  }
+  h1{
+    font-family:"Archivo",sans-serif;font-weight:900;
+    font-size:clamp(30px,5.2vw,50px);line-height:.98;letter-spacing:-.01em;
+    margin:0;
+  }
+  h1 .cn{display:block;font-size:clamp(15px,2.3vw,19px);font-weight:600;letter-spacing:.04em;color:var(--ink-soft);margin-top:8px;font-family:"Inter",sans-serif;}
+  .mast-meta{
+    font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink-soft);
+    text-align:right;line-height:1.9;border-left:1px solid var(--rule);padding-left:18px;
+  }
+  .mast-meta b{color:var(--ink);font-weight:600;}
+
+  /* ---- console ---- */
+  .console{
+    margin-top:22px;border:1.5px solid var(--ink);background:var(--panel);
+  }
+  .console-head{
+    display:flex;align-items:center;gap:10px;
+    padding:11px 18px;border-bottom:1px solid var(--rule);
+    font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--ink-soft);
+  }
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--stamp);display:inline-block;}
+  textarea{
+    width:100%;min-height:168px;resize:vertical;border:0;outline:none;
+    padding:16px 18px;background:transparent;color:var(--ink);
+    font-family:"IBM Plex Mono",monospace;font-size:12.5px;line-height:1.65;
+    display:block;
+  }
+  textarea::placeholder{color:var(--ink-faint);}
+  .actions{
+    display:flex;flex-wrap:wrap;gap:10px;align-items:center;
+    padding:12px 18px;border-top:1px solid var(--rule);background:var(--field);
+  }
+  button{font-family:"Inter",sans-serif;cursor:pointer;border:1.4px solid var(--ink);
+    background:var(--panel);color:var(--ink);font-weight:600;font-size:13.5px;
+    padding:9px 16px;transition:transform .08s ease, background .15s ease, color .15s ease;}
+  button:hover{transform:translateY(-1px);}
+  button:active{transform:translateY(0);}
+  button:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px;}
+  button.primary{background:var(--ink);color:#F7F6F1;}
+  button.primary:hover{background:#0f1712;}
+  button.ghost{border-color:var(--rule-strong);color:var(--ink-soft);background:transparent;}
+  .spacer{flex:1;}
+  .hint{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-faint);}
+
+  /* ---- notice ---- */
+  .notice{margin-top:16px;border:1.4px solid var(--stamp);background:var(--stamp-soft);
+    padding:13px 16px;font-size:13.5px;color:#6d2214;display:none;}
+  .notice.show{display:block;}
+  .notice b{font-weight:600;}
+
+  /* ---- results ---- */
+  #results{margin-top:26px;}
+  .summary{
+    display:none;flex-wrap:wrap;gap:8px 10px;align-items:center;margin-bottom:16px;
+  }
+  .summary.show{display:flex;}
+  .chip{font-family:"IBM Plex Mono",monospace;font-size:11.5px;letter-spacing:.04em;
+    border:1px solid var(--rule-strong);background:var(--panel);padding:5px 11px;color:var(--ink-soft);}
+  .chip b{color:var(--ink);font-weight:600;}
+  .res-tools{margin-left:auto;display:flex;gap:9px;flex-wrap:wrap;}
+
+  .slip{border:1.5px solid var(--ink);background:var(--panel);margin-bottom:22px;
+    animation:rise .38s cubic-bezier(.2,.7,.2,1) both;}
+  @keyframes rise{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:none;}}
+  @media(prefers-reduced-motion:reduce){.slip{animation:none;}}
+
+  .slip-head{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;
+    padding:13px 20px;border-bottom:2px dashed var(--rule-strong);}
+  .stamp{font-family:"Archivo",sans-serif;font-weight:800;font-size:12px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--stamp);border:1.6px solid var(--stamp);
+    padding:3px 9px;line-height:1;}
+  .slip-title{font-family:"Archivo",sans-serif;font-weight:700;font-size:17px;letter-spacing:.01em;}
+  .slip-sub{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink-soft);}
+  .slip-idx{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-faint);letter-spacing:.1em;}
+
+  .fieldgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));
+    gap:0;border-top:0;}
+  .cell{padding:12px 16px;border-right:1px solid var(--rule);border-bottom:1px solid var(--rule);min-width:0;}
+  .cell.wide{grid-column:1/-1;}
+  .k{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--ink-faint);display:flex;gap:7px;align-items:baseline;margin-bottom:4px;}
+  .k .gloss{color:var(--ink-soft);letter-spacing:.02em;text-transform:none;font-size:11px;}
+  .v{font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--ink);white-space:pre-line;word-break:break-word;}
+  .v.num{font-variant-numeric:tabular-nums;}
+  .v.empty{color:var(--ink-faint);}
+
+  .detail-wrap{padding:6px 0 0;}
+  .detail-cap{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--ink-faint);padding:12px 20px 8px;}
+  .tscroll{overflow-x:auto;}
+  table{border-collapse:collapse;width:100%;font-size:12.5px;}
+  th,td{padding:9px 14px;text-align:left;border-bottom:1px solid var(--rule);white-space:nowrap;
+    font-family:"IBM Plex Mono",monospace;}
+  th{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-faint);
+    font-weight:600;background:var(--field);border-bottom:1.4px solid var(--rule-strong);position:sticky;top:0;}
+  th .thgloss{display:block;color:var(--ink-soft);font-size:10.5px;letter-spacing:0;text-transform:none;margin-top:2px;font-weight:500;}
+  td{color:var(--ink);}
+  td.num{text-align:right;font-variant-numeric:tabular-nums;}
+  tbody tr:hover{background:var(--field);}
+  td.empty{color:var(--ink-faint);}
+
+  /* ---- empty state ---- */
+  .empty-state{border:1.6px dashed var(--rule-strong);background:transparent;
+    padding:42px 24px;text-align:center;}
+  .empty-state .es-mark{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.2em;
+    color:var(--ink-faint);text-transform:uppercase;margin-bottom:10px;}
+  .empty-state p{color:var(--ink-soft);margin:0 auto 16px;max-width:420px;font-size:14px;}
+
+  .toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(20px);
+    background:var(--ink);color:#F7F6F1;font-size:13px;padding:11px 20px;border-radius:2px;
+    font-family:"IBM Plex Mono",monospace;letter-spacing:.03em;opacity:0;pointer-events:none;
+    transition:opacity .2s ease, transform .2s ease;z-index:50;}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+  footer{margin-top:40px;font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-faint);
+    letter-spacing:.04em;border-top:1px solid var(--rule);padding-top:16px;}
+
+  @media(max-width:560px){
+    .mast-meta{text-align:left;border-left:0;border-top:1px solid var(--rule);padding:14px 0 0;width:100%;}
+    .cell{border-right:0;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="perf"></div>
+    <div class="mast-body">
+      <div>
+        <p class="eyebrow">OCR · 進口報單資料</p>
+        <h1>整理台
+          <span class="cn">把亂糟糟的 OCR JSON，攤成一張乾淨的報單</span>
+        </h1>
+      </div>
+      <div class="mast-meta">
+        FORM · <b>IM-CLEAN</b><br>
+        輸入：貼上 JSON 文字<br>
+        輸出：檢視 · 複製 · 匯出 Excel
+      </div>
+    </div>
+  </header>
+
+  <section class="console">
+    <div class="console-head"><span class="dot"></span> 貼上原始 JSON（可含 <code style="font-family:inherit">```json</code> 標記或最外層 result）</div>
+    <textarea id="input" spellcheck="false" placeholder='在這裡貼上測試跑出來的 JSON，例如：
+{
+  "result": "```json ... ```"
+}
+
+或直接貼內層的 { "Invoice": [...], "Packing": [...], "Waybill": {...} }'></textarea>
+    <div class="actions">
+      <button class="primary" id="btn-parse">整理</button>
+      <button class="ghost" id="btn-sample">載入範例</button>
+      <button class="ghost" id="btn-clear">清除</button>
+      <span class="spacer"></span>
+      <span class="hint" id="parse-hint"></span>
+    </div>
+  </section>
+
+  <div class="notice" id="notice"></div>
+
+  <div class="summary" id="summary"></div>
+
+  <section id="results">
+    <div class="empty-state" id="empty">
+      <div class="es-mark">尚未整理</div>
+      <p>貼上 JSON 後按「整理」，這裡會依 發票 / 裝箱單 / 提單 分區攤開。欄位是動態產生的，之後結構有變也不會壞。</p>
+      <button class="ghost" id="btn-sample2">先載入範例看看</button>
+    </div>
+  </section>
+
+  <footer>OCR JSON CLEANER · 純前端、可直接放上 GitHub Pages · 資料只在你的瀏覽器處理，不會外傳</footer>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============ 中文對照（找不到就顯示原欄名，不會壞） ============ */
+const LABELS = {
+  InvoiceNo:"發票號碼", DeliveryNo:"交貨單號", Shipper:"出貨人", Incoterm:"貿易條件",
+  Consignee:"收貨人", ShipToPlant:"送達廠區", TTLQTY:"總數量", TTLAmount:"總金額",
+  LineNo:"項次", PoNo:"採購單號", POLine:"PO 項次", PartNo:"料號", Description:"品名",
+  Qty:"數量", NetPrice:"單價", Amount:"金額", TotalQuantity:"總數量", TotalGrossWeight:"總毛重",
+  Volume:"材積", TotalPackage:"總箱數", Unit:"單位", RowNo:"序號", WaybillNumber:"提單號碼",
+  Forwarder:"承攬業者", ShippingMethod:"運送方式", GrossWeight:"毛重", ChargeableWeight:"計費重量",
+  PackingType:"包裝方式", ContainerType:"櫃型", ContainerNo:"櫃號"
+};
+const SECTION_LABELS = { Invoice:"商業發票", Packing:"裝箱單", Waybill:"提單 / 運送單" };
+
+/* ============ 解析：吃下多種貼法 ============ */
+function stripFences(str){
+  let s = String(str).trim();
+  s = s.replace(/^```[a-zA-Z0-9]*\s*/, '').replace(/\s*```$/, '');
+  return s.trim();
+}
+function tryParse(str){ try{ return JSON.parse(str); }catch(e){ return undefined; } }
+function deepExtract(input){
+  let val = input;
+  for(let i=0;i<6;i++){
+    if(typeof val === 'string'){
+      const parsed = tryParse(stripFences(val));
+      if(parsed === undefined) throw new Error('parse');
+      val = parsed; continue;
+    }
+    if(val && typeof val === 'object' && !Array.isArray(val)){
+      const keys = Object.keys(val);
+      if(keys.length === 1 && ['result','data','output','content'].includes(keys[0])){
+        val = val[keys[0]]; continue;
+      }
+    }
+    break;
+  }
+  return val;
+}
+
+/* ============ 值的顯示 ============ */
+function isEmpty(v){ return v === null || v === undefined || v === ''; }
+function fmt(v){
+  if(isEmpty(v)) return {text:'—', cls:'empty'};
+  if(typeof v === 'number'){
+    return {text:new Intl.NumberFormat('en-US',{maximumFractionDigits:20}).format(v), cls:'num'};
+  }
+  if(typeof v === 'object') return {text:JSON.stringify(v), cls:''};
+  return {text:String(v), cls:''};
+}
+function labelHTML(key){
+  const g = LABELS[key];
+  return `<span class="k"><span>${esc(key)}</span>${g?`<span class="gloss">${esc(g)}</span>`:''}</span>`;
+}
+function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+/* ============ 渲染 ============ */
+let CURRENT = null;
+
+function render(data){
+  CURRENT = data;
+  const root = document.getElementById('results');
+  root.innerHTML = '';
+
+  const keys = Object.keys(data || {});
+  if(!keys.length){ showNotice('內容解析成功，但裡面沒有任何欄位。'); return; }
+
+  // summary chips + tools
+  renderSummary(data);
+
+  keys.forEach(key => {
+    const val = data[key];
+    if(Array.isArray(val)) renderGroup(root, key, val);
+    else if(val && typeof val === 'object') renderObject(root, key, val);
+    else renderPrimitive(root, key, val);
+  });
+}
+
+function slipHead(key, title, sub, idx){
+  const secCn = SECTION_LABELS[key] || '';
+  return `<div class="slip-head">
+    <span class="stamp">${esc(key)}</span>
+    <span class="slip-title">${esc(title || secCn || key)}</span>
+    ${sub?`<span class="slip-sub">${esc(sub)}</span>`:''}
+    ${idx?`<span class="slip-idx">${esc(idx)}</span>`:''}
+  </div>`;
+}
+
+function fieldGrid(obj){
+  let cells = '';
+  Object.keys(obj).forEach(k => {
+    const v = obj[k];
+    const f = fmt(v);
+    const isLong = typeof v === 'string' && (v.includes('\n') || v.length > 40);
+    cells += `<div class="cell ${isLong?'wide':''}">
+      ${labelHTML(k)}
+      <div class="v ${f.cls}">${esc(f.text)}</div>
+    </div>`;
+  });
+  return `<div class="fieldgrid">${cells}</div>`;
+}
+
+function detailTable(rows){
+  const cols = [];
+  rows.forEach(r => Object.keys(r||{}).forEach(k => { if(!cols.includes(k)) cols.push(k); }));
+  if(!cols.length) return '';
+  let thead = cols.map(c => `<th>${esc(c)}${LABELS[c]?`<span class="thgloss">${esc(LABELS[c])}</span>`:''}</th>`).join('');
+  let tbody = rows.map(r => {
+    return '<tr>' + cols.map(c => {
+      const f = fmt(r ? r[c] : undefined);
+      const cls = (f.cls === 'num' ? 'num' : (f.cls === 'empty' ? 'empty' : ''));
+      return `<td class="${cls}">${esc(f.text)}</td>`;
+    }).join('') + '</tr>';
+  }).join('');
+  return `<div class="detail-wrap"><div class="detail-cap">明細 · Detail（${rows.length} 筆）</div>
+    <div class="tscroll"><table><thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table></div></div>`;
+}
+
+function renderGroup(root, key, arr){
+  const secCn = SECTION_LABELS[key] || key;
+  arr.forEach((item, i) => {
+    const slip = document.createElement('div');
+    slip.className = 'slip';
+    if(item && typeof item === 'object' && ('Header' in item || 'Detail' in item)){
+      const header = item.Header || {};
+      const idKey = header.InvoiceNo || header.DeliveryNo || header.WaybillNumber || '';
+      const details = Array.isArray(item.Detail) ? item.Detail : (item.Detail ? [item.Detail] : []);
+      slip.innerHTML = slipHead(key, secCn, idKey ? `NO. ${idKey}` : '', `${i+1} / ${arr.length}`)
+        + fieldGrid(header)
+        + (details.length ? detailTable(details) : '');
+    } else if(item && typeof item === 'object'){
+      slip.innerHTML = slipHead(key, secCn, '', `${i+1} / ${arr.length}`) + fieldGrid(item);
+    } else {
+      slip.innerHTML = slipHead(key, secCn, '', `${i+1} / ${arr.length}`)
+        + `<div class="fieldgrid"><div class="cell"><div class="v">${esc(fmt(item).text)}</div></div></div>`;
+    }
+    root.appendChild(slip);
+  });
+}
+
+function renderObject(root, key, obj){
+  const secCn = SECTION_LABELS[key] || key;
+  const idKey = obj.WaybillNumber || obj.InvoiceNo || '';
+  const slip = document.createElement('div');
+  slip.className = 'slip';
+  slip.innerHTML = slipHead(key, secCn, idKey ? `NO. ${idKey}` : '', '') + fieldGrid(obj);
+  root.appendChild(slip);
+}
+
+function renderPrimitive(root, key, val){
+  const slip = document.createElement('div');
+  slip.className = 'slip';
+  slip.innerHTML = slipHead(key, key, '', '')
+    + `<div class="fieldgrid"><div class="cell wide"><div class="v">${esc(fmt(val).text)}</div></div></div>`;
+  root.appendChild(slip);
+}
+
+function renderSummary(data){
+  const s = document.getElementById('summary');
+  const chips = [];
+  Object.keys(data).forEach(k => {
+    const v = data[k];
+    const cn = SECTION_LABELS[k] || k;
+    if(Array.isArray(v)) chips.push(`<span class="chip"><b>${v.length}</b> ${esc(cn)}</span>`);
+    else if(v && typeof v === 'object') chips.push(`<span class="chip">${esc(cn)} <b>1</b></span>`);
+  });
+  s.innerHTML = chips.join('') +
+    `<span class="res-tools">
+       <button class="ghost" id="btn-copy">複製整理後 JSON</button>
+       <button class="primary" id="btn-xlsx">匯出 Excel</button>
+     </span>`;
+  s.classList.add('show');
+  document.getElementById('btn-copy').addEventListener('click', copyJSON);
+  document.getElementById('btn-xlsx').addEventListener('click', exportXLSX);
+}
+
+/* ============ 匯出 ============ */
+function flattenGroup(arr){
+  const rows = [];
+  (arr||[]).forEach(item => {
+    if(item && typeof item === 'object' && ('Header' in item || 'Detail' in item)){
+      const header = item.Header || {};
+      let details = Array.isArray(item.Detail) ? item.Detail : (item.Detail ? [item.Detail] : []);
+      if(!details.length) details = [{}];
+      details.forEach(d => rows.push({ ...header, ...(d||{}) }));
+    } else if(item && typeof item === 'object'){
+      rows.push(item);
+    } else {
+      rows.push({ value:item });
+    }
+  });
+  return rows;
+}
+function safeSheetName(name, used){
+  let n = String(name).replace(/[\\\/\?\*\[\]:]/g,' ').slice(0,28) || 'Sheet';
+  let base = n, i = 2;
+  while(used.has(n)){ n = (base.slice(0,26) + '_' + i); i++; }
+  used.add(n);
+  return n;
+}
+function exportXLSX(){
+  if(!CURRENT){ return; }
+  if(typeof XLSX === 'undefined'){ toast('Excel 元件未載入，請檢查網路後重試'); return; }
+  const wb = XLSX.utils.book_new();
+  const used = new Set();
+  let sheets = 0;
+  Object.keys(CURRENT).forEach(key => {
+    const v = CURRENT[key];
+    let rows;
+    if(Array.isArray(v)) rows = flattenGroup(v);
+    else if(v && typeof v === 'object') rows = [v];
+    else rows = [{ [key]: v }];
+    if(!rows.length) return;
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, safeSheetName(key, used));
+    sheets++;
+  });
+  if(!sheets){ toast('沒有可匯出的資料'); return; }
+  const tag = tagName();
+  XLSX.writeFile(wb, `報單整理_${tag}.xlsx`);
+  toast('Excel 已下載');
+}
+function tagName(){
+  const wb = CURRENT && CURRENT.Waybill;
+  if(wb && wb.WaybillNumber) return String(wb.WaybillNumber);
+  const inv = CURRENT && CURRENT.Invoice && CURRENT.Invoice[0];
+  if(inv && inv.Header && inv.Header.InvoiceNo) return String(inv.Header.InvoiceNo);
+  const d = new Date();
+  return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+}
+function copyJSON(){
+  if(!CURRENT) return;
+  const text = JSON.stringify(CURRENT, null, 2);
+  const done = ()=>toast('整理後 JSON 已複製');
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done).catch(()=>fallbackCopy(text, done));
+  } else fallbackCopy(text, done);
+}
+function fallbackCopy(text, done){
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
+  document.body.appendChild(ta); ta.select();
+  try{ document.execCommand('copy'); done(); }catch(e){ toast('複製失敗，請手動選取'); }
+  document.body.removeChild(ta);
+}
+
+/* ============ UI ============ */
+function showNotice(msg){
+  const n = document.getElementById('notice');
+  n.innerHTML = msg; n.classList.add('show');
+}
+function hideNotice(){ document.getElementById('notice').classList.remove('show'); }
+function clearResults(){
+  document.getElementById('summary').classList.remove('show');
+  document.getElementById('summary').innerHTML = '';
+  document.getElementById('results').innerHTML =
+    `<div class="empty-state"><div class="es-mark">尚未整理</div>
+     <p>貼上 JSON 後按「整理」，這裡會依 發票 / 裝箱單 / 提單 分區攤開。</p></div>`;
+  CURRENT = null;
+}
+let toastTimer;
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.classList.remove('show'), 2000);
+}
+
+function doParse(){
+  hideNotice();
+  const raw = document.getElementById('input').value;
+  const hint = document.getElementById('parse-hint');
+  if(!raw.trim()){ showNotice('輸入是空的 — 先貼上一段 JSON，或按「載入範例」。'); clearResults(); return; }
+  let data;
+  try{ data = deepExtract(raw); }
+  catch(e){
+    showNotice('<b>看不懂這段內容。</b>請確認貼上的是完整 JSON —— 可以帶最外層的 <code>result</code>、也可以帶 <code>```json</code> 標記，但括號要完整、不能中途截斷。');
+    clearResults(); hint.textContent=''; return;
+  }
+  if(typeof data !== 'object' || data === null){
+    showNotice('解析出來的不是物件，無法分區顯示。請確認貼上的是報單 JSON。');
+    clearResults(); return;
+  }
+  render(data);
+  hint.textContent = '整理完成 ✓';
+}
+
+/* events */
+document.getElementById('btn-parse').addEventListener('click', doParse);
+document.getElementById('btn-clear').addEventListener('click', ()=>{
+  document.getElementById('input').value=''; hideNotice();
+  document.getElementById('parse-hint').textContent=''; clearResults();
+});
+function loadSample(){ document.getElementById('input').value = SAMPLE; doParse();
+  window.scrollTo({top:document.getElementById('summary').offsetTop-20, behavior:'smooth'}); }
+document.getElementById('btn-sample').addEventListener('click', loadSample);
+document.addEventListener('click', e=>{ if(e.target && e.target.id==='btn-sample2') loadSample(); });
+
+/* Ctrl/Cmd + Enter = 整理 */
+document.getElementById('input').addEventListener('keydown', e=>{
+  if((e.ctrlKey||e.metaKey) && e.key==='Enter'){ e.preventDefault(); doParse(); }
+});
+
+/* ============ 內建範例（依你附件那份；用真實物件組出「亂格式」，避免手動 escape 出錯） ============ */
+const SAMPLE_DATA = {
+  Invoice: [
+    { Header:{ InvoiceNo:"5530517983", DeliveryNo:"430687156",
+        Shipper:"Texas Instruments Southeast Asia PL\nR2R c/o DHL Supply Chain SGP P/L\nNo. 81 ALPS Avenue\nSINGAPORE 498803\nSINGAPORE\nBY ORDER OF TI TAIWAN HK BRANCH",
+        Incoterm:"DAP",
+        Consignee:"WISTRON CORPORATION\nNO. 2, GONGYE 3RD RD.,\nHUKOU TOWNSHIP, HSINCHU 30351\nTAIWAN",
+        ShipToPlant:"F60H", TTLQTY:37500, TTLAmount:3598.88 },
+      Detail:[{ LineNo:"1", DeliveryNo:"430687156", PoNo:"V100731497", POLine:"10", PartNo:"TCA9617BDGKR", Description:"OTHER ELECTRONIC INTEGRATED CIRCUITS (MI IC", Qty:37500, NetPrice:0.09597, Amount:3598.88 }] },
+    { Header:{ InvoiceNo:"5530517984", DeliveryNo:"430687171",
+        Shipper:"Texas Instruments Southeast Asia PL\nR2R c/o DHL Supply Chain SGP P/L\nNo. 81 ALPS Avenue\nSINGAPORE 498803\nSINGAPORE\nBY ORDER OF TI TAIWAN HK BRANCH",
+        Incoterm:"DAP",
+        Consignee:"WISTRON CORPORATION\nNO. 2, GONGYE 3RD RD.,\nHUKOU TOWNSHIP, HSINCHU 30351\nTAIWAN",
+        ShipToPlant:"F60H", TTLQTY:17500, TTLAmount:1679.48 },
+      Detail:[{ LineNo:"1", DeliveryNo:"430687171", PoNo:"V100736439", POLine:"10", PartNo:"TCA9617BDGKR", Description:"OTHER ELECTRONIC INTEGRATED CIRCUITS (MI IC", Qty:17500, NetPrice:0.09597, Amount:1679.48 }] },
+    { Header:{ InvoiceNo:"5530517985", DeliveryNo:"430687173",
+        Shipper:"Texas Instruments Southeast Asia PL\nR2R c/o DHL Supply Chain SGP P/L\nNo. 81 ALPS Avenue\nSINGAPORE 498803\nSINGAPORE\nBY ORDER OF TI TAIWAN HK BRANCH",
+        Incoterm:"DAP",
+        Consignee:"WISTRON CORPORATION\nNO. 2, GONGYE 3RD RD.,\nHUKOU TOWNSHIP, HSINCHU 30351\nTAIWAN",
+        ShipToPlant:"F60H", TTLQTY:97500, TTLAmount:9357.08 },
+      Detail:[{ LineNo:"1", DeliveryNo:"430687173", PoNo:"V100736439", POLine:"10", PartNo:"TCA9617BDGKR", Description:"OTHER ELECTRONIC INTEGRATED CIRCUITS (MI IC", Qty:97500, NetPrice:0.09597, Amount:9357.08 }] }
+  ],
+  Packing: [
+    { Header:{ Shipper:"Texas Instruments Southeast Asia P/L R2R c/o DHL SC SGP No. 81 ALPS Avenue Singapore 498803 65 63894778", InvoiceNo:"5530517983", DeliveryNo:"430687156", ShipToPlant:"F60H", Consignee:"WISTRON CORPORATION NO. 2, GONGYE 3RD RD., HUKOU TOWNSHIP, HSINCHU 30351 TAIWAN", TotalQuantity:37500, TotalGrossWeight:11.35, Volume:0, TotalPackage:2, Unit:"CTN" },
+      Detail:[{ RowNo:1, PartNo:"TCA9617BDGKR", PoNo:"V100731497" }] },
+    { Header:{ Shipper:"Texas Instruments Southeast Asia P/L R2R c/o DHL SC SGP No. 81 ALPS Avenue Singapore 498803 65 63894778", InvoiceNo:"5530517984", DeliveryNo:"430687171", ShipToPlant:"F60H", Consignee:"WISTRON CORPORATION NO. 2, GONGYE 3RD RD., HUKOU TOWNSHIP, HSINCHU 30351 TAIWAN", TotalQuantity:17500, TotalGrossWeight:5.15, Volume:0, TotalPackage:1, Unit:"CTN" },
+      Detail:[{ RowNo:1, PartNo:"TCA9617BDGKR", PoNo:"V100736439" }] },
+    { Header:{ Shipper:"Texas Instruments Southeast Asia P/L R2R c/o DHL SC SGP No. 81 ALPS Avenue Singapore 498803 65 63894778", InvoiceNo:"5530517985", DeliveryNo:"430687173", ShipToPlant:"F60H", Consignee:"WISTRON CORPORATION NO. 2, GONGYE 3RD RD., HUKOU TOWNSHIP, HSINCHU 30351 TAIWAN", TotalQuantity:97500, TotalGrossWeight:27.85, Volume:0, TotalPackage:3, Unit:"CTN" },
+      Detail:[{ RowNo:1, PartNo:"TCA9617BDGKR", PoNo:"V100736439" }] }
+  ],
+  Waybill: {
+    WaybillNumber:"580011447970", TTLAmount:null, Forwarder:"KWE-KINTETSU WORLD EXPRESS (S) PTE LTD.",
+    Shipper:"TEXAS INSTRUMENTS SOUTHEAST ASIA PTE. LTD.\nC/O DHL SUPPLY CHAIN SINGAPORE PTE LTD\nNO. 81 ALPS AVENUE\nSINGAPORE 498803",
+    Consignee:"WISTRON CORPORATION\nNO. 2, GONGYE 3RD RD.,\nHUKOU TOWNSHIP,\nHSINCHU 30351 TAIWAN",
+    ShipToPlant:"F60H", ShippingMethod:"Air", GrossWeight:44.5, ChargeableWeight:75.5,
+    TotalPackage:6, Unit:"CTN", PackingType:null, Volume:0.45, ContainerType:null, ContainerNo:null
+  }
+};
+// 組成和你附件一樣的「result + ```json 包裹」格式
+const SAMPLE = JSON.stringify({ result: "```json\n" + JSON.stringify(SAMPLE_DATA, null, 2) + "\n```" });
+</script>
+</body>
+</html>
