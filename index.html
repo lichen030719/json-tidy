@@ -160,7 +160,22 @@
     padding:42px 24px;text-align:center;}
   .empty-state .es-mark{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.2em;
     color:var(--ink-faint);text-transform:uppercase;margin-bottom:10px;}
-  .empty-state p{color:var(--ink-soft);margin:0 auto 16px;max-width:420px;font-size:14px;}
+  .empty-state p{color:var(--ink-soft);margin:0 auto 16px;max-width:460px;font-size:14px;}
+
+  /* ---- json output panel ---- */
+  .jsonpanel{border:1.5px solid var(--ink);background:var(--panel);
+    animation:rise .3s cubic-bezier(.2,.7,.2,1) both;}
+  @media(prefers-reduced-motion:reduce){.jsonpanel{animation:none;}}
+  .jp-head{display:flex;align-items:center;gap:12px 14px;flex-wrap:wrap;
+    padding:11px 16px 11px 18px;border-bottom:1px solid var(--rule);background:var(--field);}
+  .jp-title{font-family:"Archivo",sans-serif;font-weight:700;font-size:15px;letter-spacing:.01em;}
+  .jp-count{display:flex;gap:8px;flex-wrap:wrap;}
+  .jp-tools{margin-left:auto;display:flex;gap:9px;flex-wrap:wrap;}
+  .jsonout{width:100%;min-height:440px;resize:vertical;display:block;
+    border:0;outline:none;padding:16px 18px;background:transparent;color:var(--ink);
+    font-family:"IBM Plex Mono",monospace;font-size:12.5px;line-height:1.7;
+    white-space:pre;overflow:auto;tab-size:2;}
+  .jsonout:focus-visible{outline:2px solid var(--focus);outline-offset:-2px;}
 
   .toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(20px);
     background:var(--ink);color:#F7F6F1;font-size:13px;padding:11px 20px;border-radius:2px;
@@ -216,12 +231,10 @@
 
   <div class="notice" id="notice"></div>
 
-  <div class="summary" id="summary"></div>
-
   <section id="results">
     <div class="empty-state" id="empty">
       <div class="es-mark">尚未整理</div>
-      <p>貼上 JSON 後按「整理」，這裡會依 發票 / 裝箱單 / 提單 分區攤開。欄位是動態產生的，之後結構有變也不會壞。</p>
+      <p>貼上 JSON 後按「整理」，這裡會顯示乾淨、縮排好的整理後 JSON，可直接框選複製或匯出 Excel。</p>
       <button class="ghost" id="btn-sample2">先載入範例看看</button>
     </div>
   </section>
@@ -292,116 +305,34 @@ let CURRENT = null;
 function render(data){
   CURRENT = data;
   const root = document.getElementById('results');
-  root.innerHTML = '';
 
   const keys = Object.keys(data || {});
-  if(!keys.length){ showNotice('內容解析成功，但裡面沒有任何欄位。'); return; }
+  if(!keys.length){ showNotice('內容解析成功，但裡面沒有任何欄位。'); clearResults(); return; }
 
-  // summary chips + tools
-  renderSummary(data);
-
-  keys.forEach(key => {
-    const val = data[key];
-    if(Array.isArray(val)) renderGroup(root, key, val);
-    else if(val && typeof val === 'object') renderObject(root, key, val);
-    else renderPrimitive(root, key, val);
-  });
-}
-
-function slipHead(key, title, sub, idx){
-  const secCn = SECTION_LABELS[key] || '';
-  return `<div class="slip-head">
-    <span class="stamp">${esc(key)}</span>
-    <span class="slip-title">${esc(title || secCn || key)}</span>
-    ${sub?`<span class="slip-sub">${esc(sub)}</span>`:''}
-    ${idx?`<span class="slip-idx">${esc(idx)}</span>`:''}
-  </div>`;
-}
-
-function fieldGrid(obj){
-  let cells = '';
-  Object.keys(obj).forEach(k => {
-    const v = obj[k];
-    const f = fmt(v);
-    const isLong = typeof v === 'string' && (v.includes('\n') || v.length > 40);
-    cells += `<div class="cell ${isLong?'wide':''}">
-      ${labelHTML(k)}
-      <div class="v ${f.cls}">${esc(f.text)}</div>
-    </div>`;
-  });
-  return `<div class="fieldgrid">${cells}</div>`;
-}
-
-function detailTable(rows){
-  const cols = [];
-  rows.forEach(r => Object.keys(r||{}).forEach(k => { if(!cols.includes(k)) cols.push(k); }));
-  if(!cols.length) return '';
-  let thead = cols.map(c => `<th>${esc(c)}${LABELS[c]?`<span class="thgloss">${esc(LABELS[c])}</span>`:''}</th>`).join('');
-  let tbody = rows.map(r => {
-    return '<tr>' + cols.map(c => {
-      const f = fmt(r ? r[c] : undefined);
-      const cls = (f.cls === 'num' ? 'num' : (f.cls === 'empty' ? 'empty' : ''));
-      return `<td class="${cls}">${esc(f.text)}</td>`;
-    }).join('') + '</tr>';
-  }).join('');
-  return `<div class="detail-wrap"><div class="detail-cap">明細 · Detail（${rows.length} 筆）</div>
-    <div class="tscroll"><table><thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table></div></div>`;
-}
-
-function renderGroup(root, key, arr){
-  const secCn = SECTION_LABELS[key] || key;
-  arr.forEach((item, i) => {
-    const slip = document.createElement('div');
-    slip.className = 'slip';
-    if(item && typeof item === 'object' && ('Header' in item || 'Detail' in item)){
-      const header = item.Header || {};
-      const idKey = header.InvoiceNo || header.DeliveryNo || header.WaybillNumber || '';
-      const details = Array.isArray(item.Detail) ? item.Detail : (item.Detail ? [item.Detail] : []);
-      slip.innerHTML = slipHead(key, secCn, idKey ? `NO. ${idKey}` : '', `${i+1} / ${arr.length}`)
-        + fieldGrid(header)
-        + (details.length ? detailTable(details) : '');
-    } else if(item && typeof item === 'object'){
-      slip.innerHTML = slipHead(key, secCn, '', `${i+1} / ${arr.length}`) + fieldGrid(item);
-    } else {
-      slip.innerHTML = slipHead(key, secCn, '', `${i+1} / ${arr.length}`)
-        + `<div class="fieldgrid"><div class="cell"><div class="v">${esc(fmt(item).text)}</div></div></div>`;
-    }
-    root.appendChild(slip);
-  });
-}
-
-function renderObject(root, key, obj){
-  const secCn = SECTION_LABELS[key] || key;
-  const idKey = obj.WaybillNumber || obj.InvoiceNo || '';
-  const slip = document.createElement('div');
-  slip.className = 'slip';
-  slip.innerHTML = slipHead(key, secCn, idKey ? `NO. ${idKey}` : '', '') + fieldGrid(obj);
-  root.appendChild(slip);
-}
-
-function renderPrimitive(root, key, val){
-  const slip = document.createElement('div');
-  slip.className = 'slip';
-  slip.innerHTML = slipHead(key, key, '', '')
-    + `<div class="fieldgrid"><div class="cell wide"><div class="v">${esc(fmt(val).text)}</div></div></div>`;
-  root.appendChild(slip);
-}
-
-function renderSummary(data){
-  const s = document.getElementById('summary');
+  // 頂部小計（各區塊筆數）
   const chips = [];
-  Object.keys(data).forEach(k => {
+  keys.forEach(k => {
     const v = data[k];
     const cn = SECTION_LABELS[k] || k;
     if(Array.isArray(v)) chips.push(`<span class="chip"><b>${v.length}</b> ${esc(cn)}</span>`);
     else if(v && typeof v === 'object') chips.push(`<span class="chip">${esc(cn)} <b>1</b></span>`);
   });
-  s.innerHTML = chips.join('') +
-    `<span class="res-tools">
-       <button class="ghost" id="btn-copy">複製整理後 JSON</button>
-       <button class="primary" id="btn-xlsx">匯出 Excel</button>
-     </span>`;
-  s.classList.add('show');
+
+  root.innerHTML = `
+    <div class="jsonpanel">
+      <div class="jp-head">
+        <span class="jp-title">整理後 JSON</span>
+        <span class="jp-count">${chips.join('')}</span>
+        <span class="jp-tools">
+          <button class="ghost" id="btn-copy">複製</button>
+          <button class="primary" id="btn-xlsx">匯出 Excel</button>
+        </span>
+      </div>
+      <textarea class="jsonout" id="jsonout" readonly spellcheck="false"></textarea>
+    </div>`;
+
+  // 用 .value 塞入，避免內容含特殊字元被當成 HTML
+  document.getElementById('jsonout').value = JSON.stringify(data, null, 2);
   document.getElementById('btn-copy').addEventListener('click', copyJSON);
   document.getElementById('btn-xlsx').addEventListener('click', exportXLSX);
 }
@@ -483,11 +414,10 @@ function showNotice(msg){
 }
 function hideNotice(){ document.getElementById('notice').classList.remove('show'); }
 function clearResults(){
-  document.getElementById('summary').classList.remove('show');
-  document.getElementById('summary').innerHTML = '';
   document.getElementById('results').innerHTML =
     `<div class="empty-state"><div class="es-mark">尚未整理</div>
-     <p>貼上 JSON 後按「整理」，這裡會依 發票 / 裝箱單 / 提單 分區攤開。</p></div>`;
+     <p>貼上 JSON 後按「整理」，這裡會顯示乾淨、縮排好的整理後 JSON，可直接框選複製或匯出 Excel。</p>
+     <button class="ghost" id="btn-sample2">先載入範例看看</button></div>`;
   CURRENT = null;
 }
 let toastTimer;
@@ -524,7 +454,7 @@ document.getElementById('btn-clear').addEventListener('click', ()=>{
   document.getElementById('parse-hint').textContent=''; clearResults();
 });
 function loadSample(){ document.getElementById('input').value = SAMPLE; doParse();
-  window.scrollTo({top:document.getElementById('summary').offsetTop-20, behavior:'smooth'}); }
+  window.scrollTo({top:document.getElementById('results').offsetTop-20, behavior:'smooth'}); }
 document.getElementById('btn-sample').addEventListener('click', loadSample);
 document.addEventListener('click', e=>{ if(e.target && e.target.id==='btn-sample2') loadSample(); });
 
